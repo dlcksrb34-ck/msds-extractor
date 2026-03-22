@@ -16,8 +16,18 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB 제한
 # ── Tesseract 경로 설정 ───────────────────────────────────────────────────
 try:
     import pytesseract
+    import shutil
+    # Windows
     if os.path.exists(r"C:\Program Files\Tesseract-OCR\tesseract.exe"):
         pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    # Linux (Railway/nixpacks) - which로 경로 자동 탐색
+    elif shutil.which("tesseract"):
+        pytesseract.pytesseract.tesseract_cmd = shutil.which("tesseract")
+    # Linux 일반 경로
+    elif os.path.exists("/usr/bin/tesseract"):
+        pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+    elif os.path.exists("/usr/local/bin/tesseract"):
+        pytesseract.pytesseract.tesseract_cmd = "/usr/local/bin/tesseract"
 except ImportError:
     pass
 
@@ -304,11 +314,17 @@ def extract_from_pdf_text(path):
 
 def extract_from_pdf_ocr(path, lang="kor+eng"):
     from pdf2image import convert_from_path
-    import pytesseract
+    import pytesseract, shutil
+    # 경로 재확인
+    if shutil.which("tesseract"):
+        pytesseract.pytesseract.tesseract_cmd = shutil.which("tesseract")
     images = convert_from_path(str(path), dpi=300)
     full_text = ""
     for img in images:
-        full_text += pytesseract.image_to_string(img, lang=lang) + "\n"
+        try:
+            full_text += pytesseract.image_to_string(img, lang=lang) + "\n"
+        except Exception:
+            full_text += pytesseract.image_to_string(img, lang="eng") + "\n"
     return slice_section3(merge_split_lines(dedup_korean_chars(full_text)))
 
 def extract_from_pdf(path):
@@ -425,6 +441,63 @@ def download_excel():
         output.seek(0)
         return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                          as_attachment=True, download_name=f"{Path(filename).stem}_section3.xlsx")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/download/excel/all", methods=["POST"])
+def download_excel_all():
+    data = request.get_json()
+    all_results = data.get("results", [])
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "구성성분_전체"
+
+        hdr_font  = Font(bold=True, color="FFFFFF", size=10)
+        hdr_fill  = PatternFill("solid", fgColor="0F3460")
+        even_fill = PatternFill("solid", fgColor="E8EEF7")
+        thin      = Side(style="thin", color="BEC8D9")
+        border    = Border(left=thin, right=thin, top=thin, bottom=thin)
+        center    = Alignment(horizontal="center", vertical="center")
+        left_a    = Alignment(horizontal="left",   vertical="center")
+
+        headers    = ["No.", "화학물질명", "CAS 번호", "함유량 (% w/w)", "파일명"]
+        col_widths = [6, 55, 16, 18, 40]
+        for col, (h, w) in enumerate(zip(headers, col_widths), 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = hdr_font; cell.fill = hdr_fill
+            cell.alignment = center; cell.border = border
+            ws.column_dimensions[cell.column_letter].width = w
+
+        row_idx = 2
+        global_no = 1
+        for entry in all_results:
+            filename    = entry.get("filename", "")
+            ingredients = entry.get("ingredients", [])
+            for ing in ingredients:
+                fill = even_fill if global_no % 2 == 0 else PatternFill()
+                vals   = [global_no, ing["name"], ing["cas"], ing["content"], filename]
+                aligns = [center, left_a, center, center, left_a]
+                for col, (v, al) in enumerate(zip(vals, aligns), 1):
+                    cell = ws.cell(row=row_idx, column=col, value=v)
+                    cell.alignment = al; cell.border = border
+                    if fill.fill_type: cell.fill = fill
+                row_idx += 1
+                global_no += 1
+
+        ws.auto_filter.ref = f"A1:E{row_idx - 1}"
+        ws.freeze_panes = "A2"
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return send_file(output,
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                         as_attachment=True,
+                         download_name="MSDS_전체_구성성분.xlsx")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
