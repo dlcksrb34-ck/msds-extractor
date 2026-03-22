@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MSDS 구성성분 추출기</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eaeaea; min-height: 100vh; }
+
+  header { background: #16213e; padding: 16px 32px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #2a3a5a; }
+  header h1 { font-size: 20px; color: #53d8fb; font-weight: 600; }
+  header p  { font-size: 12px; color: #8892a4; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+  /* 드롭존 */
+  #drop-zone {
+    border: 2px dashed #2a3a5a; border-radius: 12px;
+    padding: 48px 24px; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: #16213e; margin-bottom: 24px;
+  }
+  #drop-zone.drag-over { background: #0d2137; border-color: #53d8fb; }
+  #drop-zone input { display: none; }
+  #drop-zone .icon { font-size: 40px; margin-bottom: 12px; }
+  #drop-zone h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  #drop-zone p  { font-size: 13px; color: #8892a4; margin-bottom: 16px; }
+  .btn-primary { background: #e94560; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 600; transition: opacity 0.2s; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-outline { background: transparent; color: #53d8fb; border: 1px solid #53d8fb; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+  .btn-outline:hover { background: #53d8fb22; }
+  .btn-green { background: transparent; color: #4ecca3; border: 1px solid #4ecca3; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+  .btn-green:hover { background: #4ecca322; }
+
+  /* 파일 목록 */
+  #file-list { display: none; margin-bottom: 24px; }
+  #file-list h3 { font-size: 13px; color: #8892a4; margin-bottom: 10px; }
+  .file-item {
+    display: flex; align-items: center; gap: 12px;
+    background: #16213e; border: 1px solid #2a3a5a; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 8px; font-size: 13px;
+  }
+  .file-item .name { flex: 1; }
+  .file-item .status { font-size: 12px; padding: 3px 10px; border-radius: 6px; }
+  .status-pending  { background: #2a3a5a; color: #8892a4; }
+  .status-success  { background: #0d3d2a; color: #4ecca3; }
+  .status-fail     { background: #3d1010; color: #e94560; }
+  .status-loading  { background: #1a2d4a; color: #53d8fb; }
+
+  /* 결과 영역 */
+  #result-area { display: none; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 0; }
+  .tab {
+    padding: 10px 20px; font-size: 13px; cursor: pointer;
+    border-radius: 8px 8px 0 0; background: #16213e; color: #8892a4;
+    border: 1px solid #2a3a5a; border-bottom: none; transition: all 0.2s;
+  }
+  .tab.active { background: #0f3460; color: #53d8fb; }
+  .tab-content {
+    background: #16213e; border: 1px solid #2a3a5a; border-radius: 0 8px 8px 8px;
+    min-height: 300px;
+  }
+
+  /* 테이블 탭 */
+  #tab-table { padding: 0; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: #0f3460; }
+  thead th { padding: 12px 14px; text-align: left; color: #53d8fb; font-weight: 600; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #1c2d50; }
+  tbody tr:hover { background: #0f3460; }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid #2a3a5a; }
+  .no-data { text-align: center; padding: 48px; color: #8892a4; }
+
+  /* 원문 탭 */
+  #tab-raw { padding: 16px; }
+  #raw-text { font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.7; white-space: pre-wrap; color: #eaeaea; }
+
+  /* 툴바 */
+  .toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #2a3a5a; flex-wrap: wrap; }
+  .toolbar .info { font-size: 12px; color: #4ecca3; margin-right: auto; }
+
+  /* 로딩 */
+  #loading { display: none; text-align: center; padding: 48px; }
+  .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #2a3a5a; border-top-color: #53d8fb; border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 파일 선택 드롭다운 */
+  #file-selector { background: #0f3460; color: #eaeaea; border: 1px solid #2a3a5a; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>MSDS 구성성분 추출기</h1>
+    <p>3번 항목 자동 추출 · 화학물질명 / CAS번호 / 함유량 파싱</p>
+  </div>
+</header>
+
+<main>
+  <!-- 드롭존 -->
+  <div id="drop-zone">
+    <input type="file" id="file-input" accept=".pdf,.docx,.doc" multiple>
+    <div class="icon">📄</div>
+    <h2>파일을 여기에 드래그 앤 드롭</h2>
+    <p>PDF · DOCX 지원 · 여러 파일 동시 업로드 가능</p>
+    <label class="btn-primary" for="file-input">파일 선택</label>
+  </div>
+
+  <!-- 파일 목록 -->
+  <div id="file-list">
+    <h3>업로드 파일 목록</h3>
+    <div id="file-items"></div>
+    <div style="margin-top:12px; display:flex; gap:10px;">
+      <button class="btn-primary" onclick="extractAll()">▶ 전체 추출 실행</button>
+      <button class="btn-outline" onclick="clearFiles()">목록 초기화</button>
+    </div>
+  </div>
+
+  <!-- 로딩 -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p id="loading-msg" style="color:#8892a4; font-size:13px;">처리 중...</p>
+  </div>
+
+  <!-- 결과 -->
+  <div id="result-area">
+    <div class="toolbar">
+      <select id="file-selector" onchange="showResult(this.value)"></select>
+      <span class="info" id="result-info"></span>
+      <button class="btn-outline" onclick="copyTable()">텍스트 복사</button>
+      <button class="btn-green" onclick="downloadExcel()">엑셀 다운로드</button>
+    </div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('table')">구성성분 표</div>
+      <div class="tab" onclick="switchTab('raw')">원문 텍스트</div>
+    </div>
+    <div class="tab-content">
+      <div id="tab-table">
+        <table>
+          <thead><tr><th>No.</th><th>화학물질명</th><th>CAS 번호</th><th>함유량 (% w/w)</th></tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div id="tab-raw" style="display:none;">
+        <pre id="raw-text"></pre>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+let files = [];
+let results = {};
+let currentFile = null;
+
+// 드래그앤드롭
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); addFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e => addFiles(e.target.files));
+
+function addFiles(fileList) {
+  for (const f of fileList) {
+    if (!files.find(x => x.name === f.name)) files.push(f);
+  }
+  renderFileList();
+}
+
+function renderFileList() {
+  if (!files.length) { document.getElementById('file-list').style.display = 'none'; return; }
+  document.getElementById('file-list').style.display = 'block';
+  const container = document.getElementById('file-items');
+  container.innerHTML = files.map((f, i) => {
+    const res = results[f.name];
+    let statusClass = 'status-pending', statusText = '대기';
+    if (res) {
+      if (res.success && res.ingredients.length > 0) { statusClass = 'status-success'; statusText = `성분 ${res.ingredients.length}종`; }
+      else if (res.success) { statusClass = 'status-fail'; statusText = '미발견'; }
+      else { statusClass = 'status-fail'; statusText = '오류'; }
+    }
+    return `<div class="file-item">
+      <span>📎</span>
+      <span class="name">${f.name}</span>
+      <span class="status ${statusClass}">${statusText}</span>
+    </div>`;
+  }).join('');
+}
+
+async function extractAll() {
+  if (!files.length) return;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('result-area').style.display = 'none';
+
+  for (const file of files) {
+    if (results[file.name]) continue; // 이미 추출된 파일 건너뜀
+    document.getElementById('loading-msg').textContent = `처리 중: ${file.name}`;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/extract', { method: 'POST', body: formData });
+      const data = await res.json();
+      results[file.name] = data;
+    } catch (e) {
+      results[file.name] = { success: false, error: e.message, ingredients: [] };
+    }
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  renderFileList();
+  renderSelector();
+  if (files.length > 0) showResult(files[0].name);
+}
+
+function renderSelector() {
+  const sel = document.getElementById('file-selector');
+  sel.innerHTML = files.map(f => `<option value="${f.name}">${f.name}</option>`).join('');
+  document.getElementById('result-area').style.display = 'block';
+}
+
+function showResult(filename) {
+  currentFile = filename;
+  const res = results[filename];
+  if (!res) return;
+
+  const info = document.getElementById('result-info');
+  if (res.success && res.ingredients.length > 0) {
+    info.textContent = `✓ ${res.mode} | 성분 ${res.ingredients.length}종 파싱`;
+    info.style.color = '#4ecca3';
+  } else if (res.success) {
+    info.textContent = '3번 항목을 찾지 못했습니다.';
+    info.style.color = '#f5a623';
+  } else {
+    info.textContent = `오류: ${res.error}`;
+    info.style.color = '#e94560';
+  }
+
+  // 테이블
+  const tbody = document.getElementById('table-body');
+  if (res.ingredients && res.ingredients.length > 0) {
+    tbody.innerHTML = res.ingredients.map((ing, i) =>
+      `<tr><td>${i+1}</td><td>${ing.name}</td><td>${ing.cas}</td><td>${ing.content}</td></tr>`
+    ).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="4" class="no-data">추출된 구성성분이 없습니다.</td></tr>';
+  }
+
+  // 원문
+  document.getElementById('raw-text').textContent = res.text || '원문 텍스트가 없습니다.';
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-table').style.display = tab === 'table' ? 'block' : 'none';
+  document.getElementById('tab-raw').style.display   = tab === 'raw'   ? 'block' : 'none';
+  event.target.classList.add('active');
+}
+
+function copyTable() {
+  const res = results[currentFile];
+  if (!res || !res.ingredients.length) return;
+  const text = "No.\t화학물질명\tCAS번호\t함유량\n" +
+    res.ingredients.map((r, i) => `${i+1}\t${r.name}\t${r.cas}\t${r.content}`).join('\n');
+  navigator.clipboard.writeText(text);
+  alert('클립보드에 복사됐습니다!');
+}
+
+async function downloadExcel() {
+  const res = results[currentFile];
+  if (!res || !res.ingredients.length) { alert('추출된 데이터가 없습니다.'); return; }
+  const response = await fetch('/download/excel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ingredients: res.ingredients, filename: currentFile })
+  });
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = currentFile.replace(/\.[^.]+$/, '') + '_section3.xlsx';
+  a.click();
+}
+
+function clearFiles() {
+  files = []; results = {};
+  document.getElementById('file-list').style.display = 'none';
+  document.getElementById('result-area').style.display = 'none';
+  fileInput.value = '';
+}
+</script>
+</body>
+</html>
