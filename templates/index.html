@@ -31,6 +31,8 @@
   .btn-outline:hover { background: #53d8fb22; }
   .btn-green { background: transparent; color: #4ecca3; border: 1px solid #4ecca3; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
   .btn-green:hover { background: #4ecca322; }
+  .btn-orange { background: transparent; color: #f5a623; border: 1px solid #f5a623; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+  .btn-orange:hover { background: #f5a62322; }
 
   /* 파일 목록 */
   #file-list { display: none; margin-bottom: 24px; }
@@ -130,6 +132,7 @@
       <span class="info" id="result-info"></span>
       <button class="btn-outline" onclick="copyTable()">텍스트 복사</button>
       <button class="btn-green" onclick="downloadExcel()">엑셀 다운로드</button>
+      <button class="btn-orange" onclick="downloadAllExcel()">전체 엑셀 저장</button>
     </div>
     <div class="tabs">
       <div class="tab active" onclick="switchTab('table')">구성성분 표</div>
@@ -279,6 +282,25 @@ async function downloadExcel() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = currentFile.replace(/\.[^.]+$/, '') + '_section3.xlsx';
+  a.click();
+}
+
+async function downloadAllExcel() {
+  const allResults = files
+    .filter(f => results[f.name] && results[f.name].ingredients && results[f.name].ingredients.length > 0)
+    .map(f => ({ filename: f.name, ingredients: results[f.name].ingredients }));
+
+  if (!allResults.length) { alert('추출된 데이터가 없습니다.'); return; }
+
+  const response = await fetch('/download/excel/all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ results: allResults })
+  });
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'MSDS_전체_구성성분.xlsx';
   a.click();
 }
 
